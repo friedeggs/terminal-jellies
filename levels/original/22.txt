@@ -1,0 +1,7 @@
+1 3
+XX..X..XXXXXX
+1X..X..XXXXXX
+1.......123XX
+1.......213XX
+1X..X..XXXXXX
+XX..X..XXXXXX
