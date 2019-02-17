@@ -14,7 +14,7 @@ from queue import Queue
 from cipher import AESCipher
 from constants import KEY_BINDINGS_BASE, KEY_BINDINGS, ALL_KEYS, JellyState, Direction, Justification, Orientation, Square
 from renderer import Renderer
-from util import log, get_window_size, out_of_bounds, Position, Grid
+from util import log, get_window_size, out_of_bounds, Position, Grid, get_bit
 
 class Jelly(object):
     def __init__(self, positions):
@@ -40,6 +40,16 @@ class Pane(object):
             y = self.cols - 1 - y 
         if self.orientation > 2:
             x = self.rows - 1 - x 
+        return Position(x,y)
+
+    def from_frame(self, position): 
+        x, y = position.x - self.position.x, position.y - self.position.y
+        if self.orientation >= 2 and self.orientation <= 3:
+            y = self.cols - 1 - y 
+        if self.orientation > 2:
+            x = self.rows - 1 - x 
+        if self.orientation % 2 == 0:
+            x, y = y, x
         return Position(x,y)
 
     def is_floating(self, jelly):
@@ -79,7 +89,7 @@ class JelliesGame(object):
         self.welcome_message = """
 Hi! Welcome to jellies: electric bugaloo. All the rules are unchanged. Press (%s) or (%s) to select jellies and arrow keys to move them. 
 Other commands: (%s): undo, (%s): redo, (%s): restart level, (%s): go to previous level, (%s): go to next level, and (%s): quit game. 
-All keybindings are listed in `constants.py`. Press (%s) to hide this message.
+All keybindings are listed in `constants.py`. Clicking on a jelly will move it in the direction of the side it was clicked on, unless it is floating. Press (%s) to hide this message.
 """ % (
         KEY_BINDINGS_BASE['select_next'][0], 
         KEY_BINDINGS_BASE['select_prev'][0], 
@@ -91,8 +101,8 @@ All keybindings are listed in `constants.py`. Press (%s) to hide this message.
         KEY_BINDINGS_BASE['quit'][0], 
         KEY_BINDINGS_BASE['hide_welcome_message'][0])
         def render_messages():
-            self.renderer.print(self.welcome_message.replace('\n',''),[0,30],True,pause=False)
             self.renderer.print('Level %d of %d' % (self.current_level+1, self.num_levels),[0,1],justification=Justification.LEFT,pause=False)
+            self.renderer.print(self.welcome_message.replace('\n',''),[0,30],True,pause=False)
         self.render_messages = render_messages
 
     def load_from_file(self, filename):
@@ -340,7 +350,7 @@ All keybindings are listed in `constants.py`. Press (%s) to hide this message.
                 falling_jellies, _ = self.determine_free_jellies(next_free_jellies, pane.direction_gravity, board=board, component=component)
             else:
                 falling_jellies = [p for p in next_free_jellies if p in next_floating_jellies] # these ones are in continuous motion
-            if self.should_animate and self.should_log_key_event:
+            if self.should_animate:
                 success, result = self.animate_jellies(free_jellies, falling_jellies, current_direction, board, component)
                 if not success:
                     # Put an 'undo' onto the replay string
@@ -402,9 +412,9 @@ All keybindings are listed in `constants.py`. Press (%s) to hide this message.
         self.selected_pane = self.selected_jelly // len(self.jellies)
         self.future_selected_jelly = None
         def render_messages():
+            self.renderer.print('Level %d of %d' % (self.current_level+1, self.num_levels),[0,1],justification=Justification.LEFT,pause=False)
             if self.show_welcome_message:
                 self.renderer.print(self.welcome_message.replace('\n',''),[0,30],True,pause=False)
-            self.renderer.print('Level %d of %d' % (self.current_level+1, self.num_levels),[0,1],justification=Justification.LEFT,pause=False)
         self.render_messages = render_messages
 
     def load_level(self):
@@ -417,6 +427,7 @@ All keybindings are listed in `constants.py`. Press (%s) to hide this message.
         self.board_stack_next = []
 
     def run(self):
+        self.renderer.resize()
         self.load_level()
         while not self.exited:
             if len(self.replay_string) > 0 and self.replay_idx == len(self.replay_string):
@@ -445,13 +456,54 @@ All keybindings are listed in `constants.py`. Press (%s) to hide this message.
                 self.selected_pane = self.selected_jelly // len(self.jellies)
                 if self.should_animate and self.should_log_key_event:
                     self.draw()
-            elif key in KEY_BINDINGS['arrow_left'] + KEY_BINDINGS['arrow_right']:
+            elif key in KEY_BINDINGS['arrow_left'] + KEY_BINDINGS['arrow_right'] + [curses.KEY_MOUSE]:
                 if self.selected_jelly == -1:
                     continue
                 if key in KEY_BINDINGS['arrow_left']:
                     direction = Direction.LEFT 
-                if key in KEY_BINDINGS['arrow_right']:
+                elif key in KEY_BINDINGS['arrow_right']:
                     direction = Direction.RIGHT 
+                else:
+                    id, y, x, z, bstate = curses.getmouse()
+                    if not get_bit(bstate, curses.BUTTON1_CLICKED):
+                        continue
+                    window_pos = Position(x,y)
+                    frame_pos = self.renderer.to_frame(window_pos)
+                    in_pane = False
+                    for pane_idx, pane in enumerate(self.panes):
+                        pos = pane.from_frame(frame_pos)
+                        if not out_of_bounds(pos, self.board_rows, self.board_cols):
+                            in_pane = True
+                            break 
+                    if not in_pane:
+                        continue 
+                    pos = Position(round(pos.x), round(pos.y))
+                    jelly_idx = [i for i in range(len(self.jellies)) if pos in self.jellies[i].positions]
+                    if not jelly_idx:
+                        continue 
+                    jelly_idx = jelly_idx[0]
+                    jelly = self.jellies[jelly_idx]
+                    if pane.is_floating(jelly):
+                        self.renderer.print('That jelly is floating.')
+                        continue 
+                    # Get side clicked 
+                    xs = [p.x for p in jelly.positions]
+                    ys = [p.y for p in jelly.positions]
+                    mid = Position(
+                        (max(xs) + min(xs)) * 1. / 2,
+                        (max(ys) + min(ys)) * 1. / 2
+                    )
+                    frame_mid = pane.to_coord(mid) + pane.position
+                    window_mid = self.renderer.to_window(frame_mid)
+                    direction = Direction.RIGHT if y-window_mid.y > 0 else Direction.LEFT
+                    self.selected_pane = pane_idx
+                    self.selected_jelly = self.selected_pane * len(self.jellies) + jelly_idx
+                    dict_key = 'arrow_left' if direction == Direction.LEFT else 'arrow_right'
+                    ch = KEY_BINDINGS_BASE[dict_key][0].upper()
+                    log('%s %d' % (ch, self.selected_jelly), self.replay_file)  
+                if not self.should_log_key_event:
+                    self.selected_jelly = self.try_read_int() or self.selected_jelly
+                    self.selected_pane = self.selected_jelly // len(self.jellies)
                 self.stdscr.nodelay(True)
                 self.try_move(
                     self.jellies[self.selected_jelly % len(self.jellies)], 
@@ -528,18 +580,35 @@ All keybindings are listed in `constants.py`. Press (%s) to hide this message.
             elif key in KEY_BINDINGS['hide_welcome_message']:
                 self.show_welcome_message = False
                 self.draw()
-            else:
+            elif key in KEY_BINDINGS['resize_event']:
+                self.renderer.resize()
                 self.draw()
+            if self.replay_idx == len(self.replay_string):
+                self.should_animate = True
 
     def read_char(self):
         if self.replay_idx < len(self.replay_string):
             key = self.replay_string[self.replay_idx]
             self.replay_idx += 1
-            if self.replay_idx == len(self.replay_string):
-                self.should_animate = True
         else:
             key = self.stdscr.getch()
         return key
+
+    def try_read_int(self):
+        """Returns int from previous command if present"""
+        if self.replay_idx == 0:
+            return None 
+        ch = self.replay_string[self.replay_idx-1]
+        if ch >= 'A' and ch <= 'Z':
+            self.replay_idx += 1
+            s = ''
+            while self.replay_idx < len(self.replay_string) and self.replay_string[self.replay_idx].isdigit():
+                s += self.replay_string[self.replay_idx]
+                self.replay_idx += 1
+            if self.replay_idx == len(self.replay_string):
+                self.should_animate = True
+            return int(s)
+        return None
 
     def confirm_action(self, msg='Are you sure?',log_response=True):
         self.renderer.print('%s (y/n)' % msg)

@@ -167,6 +167,8 @@ class Renderer(object):
         
         curses.curs_set(False) # Hide the cursor
 
+        curses.mousemask(curses.ALL_MOUSE_EVENTS)
+
     def ascii_representation(self, window, component_window, time_step=1.):
         self_char = window[1][1]
         self_comp = component_window[1][1]
@@ -186,20 +188,51 @@ class Renderer(object):
     def char_to_color_pair(self, char):
         return int(char) if char.isdigit() else 0
 
+    def resize(self):
+        self.window_rows, self.window_cols = get_window_size()
+        curses.resizeterm(self.window_rows+1, self.window_cols+1)
+        curses.flushinp()
+        self.stdscr.clear()
+
+    def set_scale(self):
+        if self.window_rows <= self.frame_rows or self.window_cols <= self.frame_cols:
+            self.print('Window size too small. Please resize your window.')
+            return False
+
+        self.scale = min(
+            self.window_rows/(self.frame_rows*self.mult_x),
+            self.window_cols/(self.frame_cols*self.mult_y),
+        )
+        self.scale_x = self.scale * self.mult_x
+        self.scale_y = self.scale * self.mult_y
+        return True 
+
+    def to_window(self, frame_pos):
+        return Position(
+            frame_pos.x*self.scale_x,
+            frame_pos.y*self.scale_y
+        )
+
+    def to_frame(self, window_pos):
+        return Position(
+            window_pos.x/self.scale_x,
+            window_pos.y/self.scale_y
+        )
+
     def _to_frame(self, window_x, window_y, time_step=0.0, moving_squares=None):
         # Solve: 
-        #   window_x = int(((1 - time_step) * frame_x + time_step * (frame_x + direction_x)) * self.scale_x)
-        #   window_y = int(((1 - time_step) * frame_y + time_step * (frame_y + direction_y)) * self.scale_y)
+        #   window_x = round(((1 - time_step) * frame_x + time_step * (frame_x + direction_x)) * self.scale_x)
+        #   window_y = round(((1 - time_step) * frame_y + time_step * (frame_y + direction_y)) * self.scale_y)
         direction = abs(moving_squares[min(
-            self.frame_rows-1,int(window_x/self.scale_x))
+            self.frame_rows-1,round(window_x/self.scale_x))
         ][min(
-            self.frame_cols-1,int(window_y/self.scale_y))
+            self.frame_cols-1,round(window_y/self.scale_y))
         ])
         delta = Position(direction=direction)
 
         frame_pos = Position(
-            int(((window_x)/self.scale_x) - time_step * delta.x),
-            int(((window_y)/self.scale_y) - time_step * delta.y)
+            round((window_x/self.scale_x) - time_step * delta.x),
+            round((window_y/self.scale_y) - time_step * delta.y)
         )
         if out_of_bounds(frame_pos, self.frame_rows, self.frame_cols):
             is_moving = False
@@ -207,8 +240,8 @@ class Renderer(object):
             is_moving = moving_squares[frame_pos] > 0 if moving_squares else False
         if not is_moving:
             frame_pos = Position(
-                int(window_x/self.scale_x),
-                int(window_y/self.scale_y)
+                round(window_x/self.scale_x),
+                round(window_y/self.scale_y)
             )
         if out_of_bounds(frame_pos, self.frame_rows, self.frame_cols):
             return None, False
@@ -250,26 +283,15 @@ class Renderer(object):
         self.frame_rows = len(frame)
         self.frame_cols = len(frame[0])
 
-        self.window_rows, self.window_cols = get_window_size()
-        curses.resizeterm(self.window_rows+1, self.window_cols+1)
-        # curses.flushinp()
-        self.stdscr.clear()
-        if self.window_rows <= self.frame_rows or self.window_cols <= self.frame_cols:
-            self.print('Window size too small. Please resize your window.')
-            return None, None 
-
-        self.scale = min(
-            self.window_rows/(self.frame_rows*self.mult_x),
-            self.window_cols/(self.frame_cols*self.mult_y),
-        )
-        self.scale_x = self.scale * self.mult_x
-        self.scale_y = self.scale * self.mult_y
+        success = self.set_scale()
+        if not success:
+            return None, None
 
         def delta_at(window_x, window_y):
             direction = abs(moving_squares[min(
-                self.frame_rows-1,int(window_x/self.scale_x))
+                self.frame_rows-1,round(window_x/self.scale_x))
             ][min(
-                self.frame_cols-1,int(window_y/self.scale_y))
+                self.frame_cols-1,round(window_y/self.scale_y))
             ])
             delta = Position(direction=direction)
             return delta
@@ -289,9 +311,9 @@ class Renderer(object):
             for i in range(self.window_rows):
                 for j in range(self.window_cols):
                     direction = abs(moving_squares[min(
-                        self.frame_rows-1,int(i/self.scale_x))
+                        self.frame_rows-1,round(i/self.scale_x))
                     ][min(
-                        self.frame_cols-1,int(j/self.scale_y))
+                        self.frame_cols-1,round(j/self.scale_y))
                     ])
                     delta = Position(direction=direction)
                     window = [[value_at(frame_arr,i+di,j+dj) for dj in range(-1,2)] for di in range(-1,2)]
@@ -307,7 +329,7 @@ class Renderer(object):
                     self.stdscr.addstr(i,j,char,curses.color_pair(color_idx))
             self.stdscr.refresh()
             func_draw_additional()
-        num_frames = self.frames_per_transition + 1
+        num_frames = self.frames_per_transition
         return animate_partial_func, num_frames
 
     def draw(self, frame, jelly_state, jelly_component, func_draw_additional): 
@@ -318,27 +340,16 @@ class Renderer(object):
         self.frame_rows = len(frame)
         self.frame_cols = len(frame[0])
 
-        self.window_rows, self.window_cols = get_window_size()
-        curses.resizeterm(self.window_rows+1, self.window_cols+1)
-        # curses.flushinp()
-        self.stdscr.clear() 
-        if self.window_rows <= self.frame_rows or self.window_cols <= self.frame_cols:
-            self.print('Window size too small. Please resize your window.')
+        success = self.set_scale()
+        if not success:
             return False
-
-        self.scale = min(
-            self.window_rows/(self.frame_rows*self.mult_x),
-            self.window_cols/(self.frame_cols*self.mult_y),
-        )
-        self.scale_x = self.scale * self.mult_x
-        self.scale_y = self.scale * self.mult_y
 
         for i in range(self.window_rows):
             for j in range(self.window_cols):
                 def value_at(window_x, window_y, arr=self.frame):
                     frame_pos = Position(
-                        int((window_x)/self.scale_x),
-                        int((window_y)/self.scale_y)
+                        round(window_x/self.scale_x),
+                        round(window_y/self.scale_y)
                     )
                     if out_of_bounds(frame_pos, self.frame_rows, self.frame_cols):
                         return ' '
@@ -357,9 +368,7 @@ class Renderer(object):
         return True
 
     def print(self, message, location=None, wrap_around=False, justification=Justification.CENTER,pause=True):
-        self.window_rows, self.window_cols = get_window_size()
-        curses.resizeterm(self.window_rows+1, self.window_cols+1)
-        # curses.flushinp()
+        MAX_LEN = 40
 
         loc_y0 = location[1] if isinstance(location, list) else 0
 
@@ -384,7 +393,7 @@ class Renderer(object):
             loc_x = self.window_rows - 2
 
         for i, line in enumerate(lines):
-            self.stdscr.addstr(loc_x+i,loc_y,' ' * len(line))
+            self.stdscr.addstr(loc_x+i,loc_y,' ' * MAX_LEN)
         self.stdscr.refresh()
         if pause:
             curses.napms(50)

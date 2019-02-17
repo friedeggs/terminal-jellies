@@ -1,12 +1,15 @@
 import sys, os 
 import subprocess
 
+def get_bit(byteval, val):
+    return byteval & val != 0
+
 def get_window_size():
     """Return lines, cols
     """
     return list(map(int, subprocess.check_output(['stty', 'size']).decode().split()))
 
-def out_of_bounds(pos,max_x,max_y):
+def out_of_bounds(pos, max_x, max_y):
     x, y = pos.x, pos.y
     return x < 0 or y < 0 or x >= max_x or y >= max_y
 

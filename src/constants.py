@@ -13,7 +13,8 @@ KEY_BINDINGS_BASE = {
     'redo': ['y'],
     'level_restart': ['r'],
     'quit': ['q'],
-    'hide_welcome_message': ['m']
+    'hide_welcome_message': ['m'],
+    'resize_event': [curses.KEY_RESIZE]
 }
 
 KEY_BINDINGS = {}
