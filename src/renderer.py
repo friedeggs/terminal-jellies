@@ -152,7 +152,7 @@ class Renderer(object):
         self.frame = None 
 
         self.mult_x = 1 
-        self.mult_y = 1.8
+        self.mult_y = 2
 
         self.frames_per_transition = 1
 
@@ -199,12 +199,12 @@ class Renderer(object):
             self.print('Window size too small. Please resize your window.')
             return False
 
-        self.scale = min(
+        self.scale = int(min(
             self.window_rows/(self.frame_rows*self.mult_x),
             self.window_cols/(self.frame_cols*self.mult_y),
-        )
-        self.scale_x = self.scale * self.mult_x
-        self.scale_y = self.scale * self.mult_y
+        ))
+        self.scale_x = int(self.scale * self.mult_x)
+        self.scale_y = int(self.scale * self.mult_y)
         return True 
 
     def to_window(self, frame_pos):
@@ -224,15 +224,15 @@ class Renderer(object):
         #   window_x = round(((1 - time_step) * frame_x + time_step * (frame_x + direction_x)) * self.scale_x)
         #   window_y = round(((1 - time_step) * frame_y + time_step * (frame_y + direction_y)) * self.scale_y)
         direction = abs(moving_squares[min(
-            self.frame_rows-1,round(window_x/self.scale_x))
+            self.frame_rows-1,round(1e-5+window_x/self.scale_x))
         ][min(
-            self.frame_cols-1,round(window_y/self.scale_y))
+            self.frame_cols-1,round(1e-5+window_y/self.scale_y))
         ])
         delta = Position(direction=direction)
 
         frame_pos = Position(
-            round((window_x/self.scale_x) - time_step * delta.x),
-            round((window_y/self.scale_y) - time_step * delta.y)
+            round(1e-5 + (window_x/self.scale_x) - time_step * delta.x),
+            round(1e-5 + (window_y/self.scale_y) - time_step * delta.y)
         )
         if out_of_bounds(frame_pos, self.frame_rows, self.frame_cols):
             is_moving = False
@@ -240,8 +240,8 @@ class Renderer(object):
             is_moving = moving_squares[frame_pos] > 0 if moving_squares else False
         if not is_moving:
             frame_pos = Position(
-                round(window_x/self.scale_x),
-                round(window_y/self.scale_y)
+                round(1e-5+window_x/self.scale_x),
+                round(1e-5+window_y/self.scale_y)
             )
         if out_of_bounds(frame_pos, self.frame_rows, self.frame_cols):
             return None, False
@@ -289,9 +289,9 @@ class Renderer(object):
 
         def delta_at(window_x, window_y):
             direction = abs(moving_squares[min(
-                self.frame_rows-1,round(window_x/self.scale_x))
+                self.frame_rows-1,round(1e-5+window_x/self.scale_x))
             ][min(
-                self.frame_cols-1,round(window_y/self.scale_y))
+                self.frame_cols-1,round(1e-5+window_y/self.scale_y))
             ])
             delta = Position(direction=direction)
             return delta
@@ -348,8 +348,8 @@ class Renderer(object):
             for j in range(self.window_cols):
                 def value_at(window_x, window_y, arr=self.frame):
                     frame_pos = Position(
-                        round(window_x/self.scale_x),
-                        round(window_y/self.scale_y)
+                        round(1e-5+window_x/self.scale_x),
+                        round(1e-5+window_y/self.scale_y)
                     )
                     if out_of_bounds(frame_pos, self.frame_rows, self.frame_cols):
                         return ' '
