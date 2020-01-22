@@ -367,13 +367,15 @@ class Renderer(object):
         func_draw_additional()
         return True
 
-    def print(self, message, location=None, wrap_around=False, justification=Justification.CENTER,pause=True):
+    def print(self, message, location=None, wrap_around=False, justification=Justification.CENTER,pause=True,pad=False):
         MAX_LEN = 40
 
         loc_y0 = location[1] if isinstance(location, list) else 0
 
         if wrap_around:
             line_width = self.window_cols - loc_y0 - 2 # padding
+            if pad:
+                line_width -= 2
             lines = []
             for idx in range(math.ceil(len(message)/line_width)):
                 lines += [message[idx*line_width:idx*line_width+line_width].ljust(line_width)]
@@ -398,6 +400,8 @@ class Renderer(object):
         if pause:
             curses.napms(50)
         for i, line in enumerate(lines):
+            if pad:
+                line = ' ' + line + ' '
             self.stdscr.addstr(loc_x+i,loc_y,line)
         self.stdscr.refresh()
 

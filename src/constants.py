@@ -1,6 +1,8 @@
 import curses
 from enum import Enum, IntEnum
 
+ENABLE_ANIMATION = True # Set to False to disable animation
+
 KEY_BINDINGS_BASE = { 
 # Edit this dict if you want to change the key bindings.
     'select_prev': ['w'],
@@ -13,7 +15,8 @@ KEY_BINDINGS_BASE = {
     'redo': ['y'],
     'level_restart': ['r'],
     'quit': ['q'],
-    'hide_welcome_message': ['m'],
+    'toggle_welcome_message': ['m'],
+    'toggle_animation': ['x'],
     'resize_event': [curses.KEY_RESIZE]
 }
 

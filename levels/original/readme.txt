@@ -1,1 +1,1 @@
-Levels copied from the original inspiration. Set `self.level_subdir='original'` in `jellies.JelliesGame` to play these.
+Levels copied from the original inspiration. Set `self.level_subdir='original'` in `jellies.JelliesGame` to play these. All credits go to https://github.com/zxqfl/jellies.

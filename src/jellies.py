@@ -12,7 +12,7 @@ import hashlib
 from queue import Queue
 
 from cipher import AESCipher
-from constants import KEY_BINDINGS_BASE, KEY_BINDINGS, ALL_KEYS, JellyState, Direction, Justification, Orientation, Square
+from constants import KEY_BINDINGS_BASE, KEY_BINDINGS, ALL_KEYS, JellyState, Direction, Justification, Orientation, Square, ENABLE_ANIMATION
 from renderer import Renderer
 from util import log, get_window_size, out_of_bounds, Position, Grid, get_bit
 
@@ -74,6 +74,7 @@ class JelliesGame(object):
         self.replay_string = ''
         self.replay_idx = 0
         self.should_animate = True
+        self.enable_animation = ENABLE_ANIMATION
         self.should_log_key_event = True
         self.replay_file = 'replay.log'
         if replay_file:
@@ -88,8 +89,9 @@ class JelliesGame(object):
         self.show_welcome_message = True
         self.welcome_message = """
 Hi! Welcome to jellies: electric bugaloo. All the rules are unchanged. Press (%s) or (%s) to select jellies and arrow keys to move them. 
-Other commands: (%s): undo, (%s): redo, (%s): restart level, (%s): go to previous level, (%s): go to next level, and (%s): quit game. 
-All keybindings are listed in `constants.py`. Clicking on a jelly will move it in the direction of the side it was clicked on, unless it is floating. Press (%s) to hide this message.
+Other commands: (%s): undo, (%s): redo, (%s): restart level, (%s): go to previous level, (%s): go to next level, (%s): toggle animation, and (%s): quit game. 
+All keybindings are listed in `constants.py`. Clicking on a jelly will move it in the direction of the side it was clicked on, unless it is floating. 
+Press (%s) to toggle this message.
 """ % (
         KEY_BINDINGS_BASE['select_next'][0], 
         KEY_BINDINGS_BASE['select_prev'][0], 
@@ -98,11 +100,13 @@ All keybindings are listed in `constants.py`. Clicking on a jelly will move it i
         KEY_BINDINGS_BASE['level_restart'][0], 
         KEY_BINDINGS_BASE['level_prev'][0], 
         KEY_BINDINGS_BASE['level_next'][0], 
+        KEY_BINDINGS_BASE['toggle_animation'][0],
         KEY_BINDINGS_BASE['quit'][0], 
-        KEY_BINDINGS_BASE['hide_welcome_message'][0])
+        KEY_BINDINGS_BASE['toggle_welcome_message'][0])
         def render_messages():
             self.renderer.print('Level %d of %d' % (self.current_level+1, self.num_levels),[0,1],justification=Justification.LEFT,pause=False)
-            self.renderer.print(self.welcome_message.replace('\n',''),[0,30],True,pause=False)
+            if self.show_welcome_message:
+                self.renderer.print(self.welcome_message.replace('\n',''),[0,30],True,pause=False,pad=True)
         self.render_messages = render_messages
 
     def load_from_file(self, filename):
@@ -319,7 +323,7 @@ All keybindings are listed in `constants.py`. Clicking on a jelly will move it i
                 if dict_key in ['arrow_left', 'arrow_right'] and key in dict_val:
                     self.queued_key_events += str(KEY_BINDINGS_BASE[dict_key][0])
                     continue 
-                if dict_key in ['select_prev', 'select_next', 'redo', 'hide_welcome_message'] and key in dict_val:
+                if dict_key in ['select_prev', 'select_next', 'redo', 'toggle_welcome_message'] and key in dict_val:
                     continue
                 if key in dict_val:
                     return False, {'pressed_key': str(KEY_BINDINGS_BASE[dict_key][0])} # representative should be string
@@ -333,6 +337,8 @@ All keybindings are listed in `constants.py`. Clicking on a jelly will move it i
         floating_jellies, sitting_jellies = self.determine_free_jellies(all_jellies, pane.direction_gravity)
         execute_first_move = True
         self.future_selected_jelly = copy.deepcopy(self.jellies[self.selected_jelly % len(self.jellies)])
+        animate = self.should_animate and self.enable_animation
+        draw = True
         while free_jellies:
             if execute_first_move:
                 self.board_stack_prev.append([self.board, self.selected_jelly])
@@ -350,15 +356,14 @@ All keybindings are listed in `constants.py`. Clicking on a jelly will move it i
                 falling_jellies, _ = self.determine_free_jellies(next_free_jellies, pane.direction_gravity, board=board, component=component)
             else:
                 falling_jellies = [p for p in next_free_jellies if p in next_floating_jellies] # these ones are in continuous motion
-            if self.should_animate:
+            if animate:
                 success, result = self.animate_jellies(free_jellies, falling_jellies, current_direction, board, component)
                 if not success:
-                    # Put an 'undo' onto the replay string
-                    self.push_key_events('u')
-                    if result['pressed_key'] not in KEY_BINDINGS['undo']:
-                        self.push_key_events(result['pressed_key'])
+                    if result['pressed_key'] in KEY_BINDINGS['undo']:
+                        draw = False # Don't show the end result of the move
+                    self.push_key_events(result['pressed_key'])
                     self.queued_key_events = ''
-                    return
+                    animate = False # Skip the rest of animation for this move
             self.board = board 
             self.component = component 
             if execute_first_move:
@@ -374,7 +379,8 @@ All keybindings are listed in `constants.py`. Clicking on a jelly will move it i
             execute_first_move = False
         # Updates
         self.update_members()
-        self.draw() # Indicate selected jelly
+        if draw:
+            self.draw() # Indicate selected jelly
         if execute_first_move:
             # Produce error message
             self.renderer.print('That direction is blocked.')
@@ -411,11 +417,6 @@ All keybindings are listed in `constants.py`. Clicking on a jelly will move it i
             self.selected_jelly = (self.selected_jelly + 1) % (len(self.jellies) * len(self.panes))
         self.selected_pane = self.selected_jelly // len(self.jellies)
         self.future_selected_jelly = None
-        def render_messages():
-            self.renderer.print('Level %d of %d' % (self.current_level+1, self.num_levels),[0,1],justification=Justification.LEFT,pause=False)
-            if self.show_welcome_message:
-                self.renderer.print(self.welcome_message.replace('\n',''),[0,30],True,pause=False)
-        self.render_messages = render_messages
 
     def load_level(self):
         self.load_from_file('./levels/%s/%d.txt' % (self.level_subdir, self.current_level))
@@ -511,18 +512,17 @@ All keybindings are listed in `constants.py`. Clicking on a jelly will move it i
                     self.panes[self.selected_jelly // len(self.jellies)]
                 )
                 self.stdscr.nodelay(False)
-                self.push_key_events(self.queued_key_events)
-                self.queued_key_events = ''
                 # Check if player has completed the level
                 distinct_colors = set([self.board[jelly.positions[0]] for jelly in self.jellies]) 
                 if len(self.jellies) == len(distinct_colors):
                     # Level complete!
+                    self.queued_key_events = ''
                     self.solved_levels[self.current_level] = True
                     self.show_welcome_message = False
                     if all(self.solved_levels):
                         self.renderer.print('All levels complete!')
                         curses.napms(1000)
-                        self.play_fancy_closing_screen()
+                        self.play_basic_closing_screen()
                     else:
                         self.renderer.print('Level complete!')
                         curses.napms(1000)
@@ -532,6 +532,9 @@ All keybindings are listed in `constants.py`. Clicking on a jelly will move it i
                             self.current_level = [i for i, b in enumerate(self.solved_levels) if not b][0]
                         self.load_level()
                         self.renderer.print('Level complete!')
+                if self.queued_key_events:
+                    self.push_key_events(self.queued_key_events[0])
+                    self.queued_key_events = self.queued_key_events[1:]
             elif key in KEY_BINDINGS['undo']:
                 if not self.board_stack_prev:
                     self.renderer.print('No moves to undo.')
@@ -572,13 +575,19 @@ All keybindings are listed in `constants.py`. Clicking on a jelly will move it i
                     self.renderer.print('Cannot go past first level.')
                     continue 
                 self.current_level -= 1
+                self.show_welcome_message = False
                 self.load_level()
             elif key in KEY_BINDINGS['quit']: 
                 if self.board_stack_prev and not self.confirm_action('Quit the game?',log_response=False):
+                    log('n', self.replay_file)
                     continue
                 self.exited = True
-            elif key in KEY_BINDINGS['hide_welcome_message']:
-                self.show_welcome_message = False
+                curses.napms(100)
+            elif key in KEY_BINDINGS['toggle_welcome_message']:
+                self.show_welcome_message = not self.show_welcome_message
+                self.draw()
+            elif key in KEY_BINDINGS['toggle_animation']:
+                self.enable_animation = not self.enable_animation
                 self.draw()
             elif key in KEY_BINDINGS['resize_event']:
                 self.renderer.resize()
@@ -668,6 +677,8 @@ All keybindings are listed in `constants.py`. Clicking on a jelly will move it i
                     row += 1
             self.stdscr.refresh()
             key = self.stdscr.getch()
+            while key not in [ord('q'), ord('Q')]: 
+                key = self.stdscr.getch()
 
     def play_basic_closing_screen(self):
         self.renderer.print('Game complete!')
